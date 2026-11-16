@@ -39,6 +39,7 @@ const historyLoading = ref(false);
 const historyError = ref('');
 const upgradeNotice = ref('');
 const upgradeNoticeKind = ref('success');
+let historySeq = 0;
 
 const discountMode = ref('none');
 const discountFixed = ref('');
@@ -179,19 +180,37 @@ async function applyCoupon() {
 }
 
 function discountPayload() {
-    if (discountMode.value === 'none') {
+    if (discountMode.value === 'none' || resolveDiscount(total.value) === 0) {
         return null;
     }
 
     if (discountMode.value === 'manual_fixed') {
-        return { mode: 'manual_fixed', amount: parseCents(discountFixed.value) };
+        const amount = parseCents(discountFixed.value);
+
+        if (amount < 1) {
+            return null;
+        }
+
+        return { mode: 'manual_fixed', amount };
     }
 
     if (discountMode.value === 'manual_percent') {
-        return { mode: 'manual_percent', percent_bps: parsePercentBps(discountPercent.value) };
+        const percentBps = Math.min(10000, Math.max(0, parsePercentBps(discountPercent.value)));
+
+        if (percentBps < 1) {
+            return null;
+        }
+
+        return { mode: 'manual_percent', percent_bps: percentBps };
     }
 
-    return { mode: 'coupon', code: appliedCoupon.value?.code ?? couponCode.value.trim() };
+    const code = appliedCoupon.value?.code ?? couponCode.value.trim();
+
+    if (code === '') {
+        return null;
+    }
+
+    return { mode: 'coupon', code };
 }
 
 function resetDiscount() {
@@ -285,18 +304,33 @@ function selectCustomer(row) {
 
 function clearCustomer() {
     customer.value = null;
+    historySeq += 1;
     history.value = [];
     historyError.value = '';
+    historyLoading.value = false;
     upgradeNotice.value = '';
+}
+
+function historyRequestIsCurrent(seq, key) {
+    if (seq !== historySeq || customer.value === null) {
+        return false;
+    }
+
+    return `${customer.value.type}|${customer.value.id}` === key;
 }
 
 async function loadHistory() {
     if (customer.value === null) {
+        historySeq += 1;
         history.value = [];
         historyError.value = '';
+        historyLoading.value = false;
 
         return;
     }
+
+    const seq = ++historySeq;
+    const key = `${customer.value.type}|${customer.value.id}`;
 
     historyLoading.value = true;
     historyError.value = '';
@@ -307,12 +341,23 @@ async function loadHistory() {
             customer_id: customer.value.id,
             limit: 5,
         });
+
+        if (!historyRequestIsCurrent(seq, key)) {
+            return;
+        }
+
         history.value = response.data ?? [];
     } catch (error) {
+        if (!historyRequestIsCurrent(seq, key)) {
+            return;
+        }
+
         history.value = [];
         historyError.value = error instanceof ApiError ? error.firstError : t('common.error');
     } finally {
-        historyLoading.value = false;
+        if (historyRequestIsCurrent(seq, key)) {
+            historyLoading.value = false;
+        }
     }
 }
 
@@ -468,8 +513,10 @@ function resetSale() {
     customerResults.value = [];
     customerHasSearched.value = false;
     customerSearchError.value = '';
+    historySeq += 1;
     history.value = [];
     historyError.value = '';
+    historyLoading.value = false;
     upgradeNotice.value = '';
     highlightPlans.value = false;
 }
