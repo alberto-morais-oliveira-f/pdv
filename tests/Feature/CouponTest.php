@@ -19,6 +19,17 @@ it('persists a coupon', function (): void {
     expect($coupon->fresh()->code)->toBe('PROMO10');
 });
 
+it('trims and uppercases coupon codes on write', function (): void {
+    $coupon = Coupon::query()->create([
+        'code' => '  promo10  ',
+        'type' => CouponType::Percent,
+        'value' => 1000,
+        'active' => true,
+    ]);
+
+    expect($coupon->fresh()->code)->toBe('PROMO10');
+});
+
 it('uppercases coupon codes so uniqueness is case-insensitive', function (): void {
     Coupon::query()->create([
         'code' => 'promo10',

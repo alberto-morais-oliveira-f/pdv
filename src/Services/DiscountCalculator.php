@@ -74,7 +74,10 @@ class DiscountCalculator
 
     private function percentAmount(int $gross, int $bps): int
     {
-        return $this->clamp(intdiv($gross * max(0, $bps), 10000), $gross);
+        $bps = min(10000, max(0, $bps));
+        $amount = intdiv($gross, 10000) * $bps + intdiv(($gross % 10000) * $bps, 10000);
+
+        return $this->clamp($amount, $gross);
     }
 
     private function clamp(int $amount, int $gross): int

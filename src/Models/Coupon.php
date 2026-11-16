@@ -71,7 +71,7 @@ class Coupon extends Model
     protected function code(): Attribute
     {
         return Attribute::make(
-            set: fn (string $value): string => strtoupper($value),
+            set: fn (string $value): string => strtoupper(trim($value)),
         );
     }
 }

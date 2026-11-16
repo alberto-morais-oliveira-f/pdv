@@ -21,7 +21,7 @@ class ValidateCouponRequest extends FormRequest
         $code = $this->input('code');
 
         if (is_string($code)) {
-            $this->merge(['code' => strtoupper($code)]);
+            $this->merge(['code' => strtoupper(trim($code))]);
         }
     }
 
@@ -32,7 +32,7 @@ class ValidateCouponRequest extends FormRequest
     {
         return [
             'code' => ['required', 'string', 'max:64'],
-            'gross' => ['sometimes', 'integer', 'min:0'],
+            'gross' => ['sometimes', 'integer', 'min:0', 'max:100000000000'],
         ];
     }
 

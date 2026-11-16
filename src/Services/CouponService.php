@@ -50,7 +50,7 @@ class CouponService
      */
     public function findValidByCode(string $code): Coupon
     {
-        $coupon = Coupon::query()->where('code', strtoupper($code))->first();
+        $coupon = Coupon::query()->where('code', strtoupper(trim($code)))->first();
 
         if ($coupon === null) {
             $this->refuse(__('pdv::coupons.errors.not_found'));
@@ -66,7 +66,7 @@ class CouponService
             $this->refuse(__('pdv::coupons.errors.not_started'));
         }
 
-        if ($coupon->ends_at !== null && $coupon->ends_at->lt($now)) {
+        if ($coupon->ends_at !== null && $this->expiresAt($coupon->ends_at)->lt($now)) {
             $this->refuse(__('pdv::coupons.errors.expired'));
         }
 
@@ -96,6 +96,18 @@ class CouponService
             'value' => $coupon->value,
             'discount_preview' => $preview,
         ];
+    }
+
+    /**
+     * Date-only `ends_at` is stored at midnight; treat that as the end of the calendar day.
+     */
+    private function expiresAt(Carbon $endsAt): Carbon
+    {
+        if ($endsAt->format('H:i:s') === '00:00:00') {
+            return $endsAt->copy()->endOfDay();
+        }
+
+        return $endsAt;
     }
 
     /**

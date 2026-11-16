@@ -104,6 +104,114 @@ it('deletes a coupon', function (): void {
     $this->getJson('/pdv/api/coupons')->assertJsonCount(0, 'data');
 });
 
+it('trims and uppercases coupon codes on store so validate matches', function (): void {
+    $this->postJson('/pdv/api/coupons', [
+        'code' => '  promo10  ',
+        'type' => 'percent',
+        'value' => 1000,
+    ])->assertCreated()
+        ->assertJsonPath('data.code', 'PROMO10');
+
+    $this->assertDatabaseHas('pdv_coupons', ['code' => 'PROMO10']);
+
+    $this->getJson('/pdv/api/coupons/validate?code=PROMO10')
+        ->assertOk()
+        ->assertJsonPath('code', 'PROMO10');
+});
+
+it('trims and uppercases coupon codes on update', function (): void {
+    $coupon = makeCoupon();
+
+    $this->putJson("/pdv/api/coupons/{$coupon->id}", [
+        'code' => '  verao20  ',
+        'type' => 'percent',
+        'value' => 1000,
+    ])->assertOk()
+        ->assertJsonPath('data.code', 'VERAO20');
+
+    $this->assertDatabaseHas('pdv_coupons', [
+        'id' => $coupon->id,
+        'code' => 'VERAO20',
+    ]);
+});
+
+it('rejects a percent coupon above 10000 bps', function (): void {
+    $this->postJson('/pdv/api/coupons', [
+        'code' => 'OVER',
+        'type' => 'percent',
+        'value' => 20000,
+    ])->assertUnprocessable()
+        ->assertJsonValidationErrors(['value']);
+});
+
+it('allows a fixed coupon above 10000 cents', function (): void {
+    $this->postJson('/pdv/api/coupons', [
+        'code' => 'BIGFIX',
+        'type' => 'fixed',
+        'value' => 20000,
+    ])->assertCreated()
+        ->assertJsonPath('data.value', 20000);
+});
+
+it('rejects updating a percent coupon above 10000 bps', function (): void {
+    $coupon = makeCoupon();
+
+    $this->putJson("/pdv/api/coupons/{$coupon->id}", [
+        'value' => 20000,
+    ])->assertUnprocessable()
+        ->assertJsonValidationErrors(['value']);
+});
+
+it('rejects max_uses below the current uses_count', function (): void {
+    $coupon = makeCoupon(['max_uses' => 10]);
+    $coupon->uses_count = 5;
+    $coupon->save();
+
+    $this->putJson("/pdv/api/coupons/{$coupon->id}", [
+        'max_uses' => 3,
+    ])->assertUnprocessable()
+        ->assertJsonValidationErrors(['max_uses']);
+});
+
+it('allows max_uses equal to the current uses_count', function (): void {
+    $coupon = makeCoupon(['max_uses' => 10]);
+    $coupon->uses_count = 5;
+    $coupon->save();
+
+    $this->putJson("/pdv/api/coupons/{$coupon->id}", [
+        'max_uses' => 5,
+    ])->assertOk()
+        ->assertJsonPath('data.max_uses', 5);
+});
+
+it('rejects a gross above the envelope on validate', function (): void {
+    makeCoupon();
+
+    $this->getJson('/pdv/api/coupons/validate?code=PROMO10&gross=100000000001')
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['gross']);
+});
+
+it('treats a date-only ends_at as valid through the end of that day', function (): void {
+    $this->postJson('/pdv/api/coupons', [
+        'code' => 'HOJE',
+        'type' => 'percent',
+        'value' => 1000,
+        'ends_at' => now()->toDateString(),
+    ])->assertCreated();
+
+    $this->getJson('/pdv/api/coupons/validate?code=HOJE&gross=10000')
+        ->assertOk()
+        ->assertJsonPath('code', 'HOJE')
+        ->assertJsonPath('discount_preview', 1000);
+});
+
+it('treats a persisted midnight ends_at as inclusive of that calendar day', function (): void {
+    makeCoupon(['ends_at' => now()->startOfDay()]);
+
+    expect(app(CouponService::class)->findValidByCode('PROMO10')->code)->toBe('PROMO10');
+});
+
 it('rejects a duplicate code', function (): void {
     makeCoupon(['code' => 'PROMO10']);
 

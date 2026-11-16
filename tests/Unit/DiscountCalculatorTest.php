@@ -114,6 +114,28 @@ it('clamps a manual percent result to the gross', function (): void {
         ->and($resolved['percent_bps'])->toBe(20000);
 });
 
+it('caps bps at 10000 and does not overflow on large gross', function (): void {
+    $resolved = discountCalculator()->resolve(PHP_INT_MAX, [
+        'mode' => 'manual_percent',
+        'percent_bps' => 20000,
+    ], null);
+
+    expect($resolved['amount'])->toBe(PHP_INT_MAX)
+        ->and($resolved['percent_bps'])->toBe(20000);
+});
+
+it('computes percent of a large gross without overflowing the integer product', function (): void {
+    $gross = PHP_INT_MAX;
+    $bps = 1000;
+
+    $resolved = discountCalculator()->resolve($gross, [
+        'mode' => 'manual_percent',
+        'percent_bps' => $bps,
+    ], null);
+
+    expect($resolved['amount'])->toBe(intdiv($gross, 10000) * $bps + intdiv(($gross % 10000) * $bps, 10000));
+});
+
 it('resolves a percent coupon with the same floor math', function (): void {
     $coupon = discountCoupon(CouponType::Percent, 1000);
 

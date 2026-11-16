@@ -27,6 +27,7 @@ return [
         'value.required' => 'Informe o valor do cupom.',
         'value.integer' => 'O valor do cupom deve ser um número inteiro.',
         'value.min' => 'O valor do cupom deve ser de pelo menos :min.',
+        'value.max' => 'O valor percentual do cupom não pode ser maior que :max.',
         'active.boolean' => 'O campo ativo deve ser verdadeiro ou falso.',
         'starts_at.date' => 'A data de início do cupom é inválida.',
         'ends_at.date' => 'A data de término do cupom é inválida.',
@@ -35,6 +36,7 @@ return [
         'max_uses.min' => 'O limite de usos deve ser de pelo menos :min.',
         'gross.integer' => 'O total bruto deve ser um inteiro em centavos.',
         'gross.min' => 'O total bruto não pode ser negativo.',
+        'gross.max' => 'O total bruto não pode ser maior que :max.',
     ],
 
     'errors' => [

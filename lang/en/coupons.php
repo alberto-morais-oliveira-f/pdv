@@ -22,9 +22,11 @@ return [
         'type.enum' => 'The coupon type must be percent or fixed.',
         'value.required' => 'The coupon value is required.',
         'value.min' => 'The coupon value must be at least :min.',
+        'value.max' => 'The percent coupon value may not be greater than :max.',
         'ends_at.after_or_equal' => 'The end date must be on or after the start date.',
         'max_uses.min' => 'The usage limit must be at least :min.',
         'gross.min' => 'The gross total cannot be negative.',
+        'gross.max' => 'The gross total may not be greater than :max.',
     ],
 
     'errors' => [
