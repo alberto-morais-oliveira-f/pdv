@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Am2tec\Pdv\Models;
 
 use Am2tec\Pdv\Enums\CouponType;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 
@@ -38,7 +39,6 @@ class Coupon extends Model
         'starts_at',
         'ends_at',
         'max_uses',
-        'uses_count',
     ];
 
     /**
@@ -63,5 +63,15 @@ class Coupon extends Model
             'max_uses' => 'integer',
             'uses_count' => 'integer',
         ];
+    }
+
+    /**
+     * @return Attribute<string, string>
+     */
+    protected function code(): Attribute
+    {
+        return Attribute::make(
+            set: fn (string $value): string => strtoupper($value),
+        );
     }
 }
