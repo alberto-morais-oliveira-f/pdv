@@ -4,10 +4,12 @@ declare(strict_types=1);
 
 namespace Am2tec\Pdv\Models;
 
+use Am2tec\Pdv\Enums\DiscountType;
 use Am2tec\Pdv\Enums\SaleStatus;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Carbon;
 
@@ -22,7 +24,13 @@ use Illuminate\Support\Carbon;
  * @property int $gross_amount
  * @property int $fees_amount
  * @property int $net_amount
+ * @property int $discount_amount
+ * @property DiscountType $discount_type
+ * @property int|null $discount_percent_bps
+ * @property int|null $coupon_id
+ * @property string|null $coupon_code_snapshot
  * @property Carbon $occurred_at
+ * @property-read Coupon|null $coupon
  * @property-read Collection<int, SaleItem> $items
  * @property-read Collection<int, SalePayment> $payments
  */
@@ -43,7 +51,20 @@ class Sale extends Model
         'gross_amount',
         'fees_amount',
         'net_amount',
+        'discount_amount',
+        'discount_type',
+        'discount_percent_bps',
+        'coupon_id',
+        'coupon_code_snapshot',
         'occurred_at',
+    ];
+
+    /**
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'discount_amount' => 0,
+        'discount_type' => 'none',
     ];
 
     /**
@@ -57,8 +78,20 @@ class Sale extends Model
             'gross_amount' => 'integer',
             'fees_amount' => 'integer',
             'net_amount' => 'integer',
+            'discount_amount' => 'integer',
+            'discount_type' => DiscountType::class,
+            'discount_percent_bps' => 'integer',
+            'coupon_id' => 'integer',
             'occurred_at' => 'datetime',
         ];
+    }
+
+    /**
+     * @return BelongsTo<Coupon, $this>
+     */
+    public function coupon(): BelongsTo
+    {
+        return $this->belongsTo(Coupon::class, 'coupon_id');
     }
 
     /**
