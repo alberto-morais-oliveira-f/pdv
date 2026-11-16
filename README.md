@@ -116,7 +116,7 @@ Throw `FulfillmentRejected` to refuse a sale (HTTP 422 + rollback). See [INTEGRA
 | `SaleCompleted` | `pdv.sale.completed` | After the outermost DB transaction **commits** |
 | `SaleCancelled` | `pdv.sale.cancelled` | Same, on allowed cancel |
 
-Payload (`SaleCompletedPayload`, integer cents): `sale_id`, `occurred_at`, `operator_id`, `customer`, `items[]`, `payments[]`, `totals.{gross,fees,net}`. Full JSON in [INTEGRATE.md](INTEGRATE.md). Financial posting is **host-only** (listen if `financial` exists; otherwise no-op).
+Payload (`SaleCompletedPayload`, integer cents): `sale_id`, `occurred_at`, `operator_id`, `customer`, `items[]`, `payments[]`, `totals.{gross,discount,fees,net}`, `discount.{type,percent_bps,coupon_id,coupon_code}`. Full JSON in [INTEGRATE.md](INTEGRATE.md). Financial posting is **host-only** (listen if `financial` exists; otherwise no-op).
 
 ## Completing a sale (`POST pdv/api/sales`)
 

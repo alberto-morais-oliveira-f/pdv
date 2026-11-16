@@ -56,6 +56,18 @@ class CouponService
             $this->refuse(__('pdv::coupons.errors.not_found'));
         }
 
+        $this->assertConsumable($coupon);
+
+        return $coupon;
+    }
+
+    /**
+     * Re-run on a locked row so a race cannot consume an inactive or out-of-window coupon.
+     *
+     * @throws ValidationException
+     */
+    public function assertConsumable(Coupon $coupon): void
+    {
         if (! $coupon->active) {
             $this->refuse(__('pdv::coupons.errors.inactive'));
         }
@@ -73,8 +85,6 @@ class CouponService
         if ($coupon->max_uses !== null && $coupon->uses_count >= $coupon->max_uses) {
             $this->refuse(__('pdv::coupons.errors.max_uses'));
         }
-
-        return $coupon;
     }
 
     /**

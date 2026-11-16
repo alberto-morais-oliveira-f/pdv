@@ -40,7 +40,7 @@ it('cancels a completed sale from today and dispatches SaleCancelled', function 
         $payload = $event->payload->toArray();
 
         return $payload['sale_id'] === $sale->id
-            && $payload['totals'] === ['gross' => 1000, 'fees' => 0, 'net' => 1000]
+            && $payload['totals'] === ['gross' => 1000, 'discount' => 0, 'fees' => 0, 'net' => 1000]
             && $payload['items'][0]['source_id'] === '10'
             && $payload['payments'][0]['method'] === 'cash';
     });

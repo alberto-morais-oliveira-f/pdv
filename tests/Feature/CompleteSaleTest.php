@@ -61,6 +61,7 @@ it('completes a cash-only sale with one product', function (): void {
     $response->assertCreated()
         ->assertJsonPath('data.status', 'completed')
         ->assertJsonPath('data.totals.gross', 2000)
+        ->assertJsonPath('data.totals.discount', 0)
         ->assertJsonPath('data.totals.fees', 0)
         ->assertJsonPath('data.totals.net', 2000)
         ->assertJsonPath('data.items.0.total_amount', 2000);
@@ -79,7 +80,13 @@ it('completes a cash-only sale with one product', function (): void {
         return $payload['sale_id'] === $sale->id
             && $payload['operator_id'] === 7
             && $payload['customer'] === null
-            && $payload['totals'] === ['gross' => 2000, 'fees' => 0, 'net' => 2000]
+            && $payload['totals'] === ['gross' => 2000, 'discount' => 0, 'fees' => 0, 'net' => 2000]
+            && $payload['discount'] === [
+                'type' => 'none',
+                'percent_bps' => null,
+                'coupon_id' => null,
+                'coupon_code' => null,
+            ]
             && $payload['items'][0] === [
                 'type' => 'product',
                 'source_type' => 'stock_product',
@@ -288,10 +295,10 @@ it('stores the optional customer reference', function (): void {
     Event::assertDispatched(SaleCompleted::class, fn (SaleCompleted $e): bool => $e->payload->toArray()['customer'] === ['type' => 'App\\Models\\Student', 'id' => '42']);
 });
 
-it('rejects zero-amount payments', function (): void {
+it('rejects zero-amount payments when payable is not zero', function (): void {
     $this->postJson('/pdv/api/sales', [
         'operator_id' => 1,
-        'items' => [productItem(0)],
+        'items' => [productItem(1000)],
         'payments' => [['method' => 'cash', 'amount' => 0]],
     ])->assertUnprocessable()
         ->assertJsonValidationErrors(['payments.0.amount']);

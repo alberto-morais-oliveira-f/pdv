@@ -141,11 +141,12 @@ Dispatched with `DB::afterCommit` (`SaleCompletedPayload`, amounts in **integer 
       "expected_settlement_at": null
     }
   ],
-  "totals": { "gross": 0, "fees": 0, "net": 0 }
+  "totals": { "gross": 0, "discount": 0, "fees": 0, "net": 0 },
+  "discount": { "type": "none|manual_fixed|manual_percent|coupon", "percent_bps": null, "coupon_id": null, "coupon_code": null }
 }
 ```
 
-`customer` is `null` when the sale has no customer. Card fee/settlement fields are `null` on cash/PIX.
+`customer` is `null` when the sale has no customer. Card fee/settlement fields are `null` on cash/PIX. `totals.net` is payable (`gross - discount`) minus fees. Payments must sum to payable, not gross.
 
 ### `pdv.sale.cancelled` (`Am2tec\Pdv\Events\SaleCancelled`)
 

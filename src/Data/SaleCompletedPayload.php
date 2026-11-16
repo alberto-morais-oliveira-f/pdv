@@ -18,7 +18,8 @@ final readonly class SaleCompletedPayload
      * @param  array{type: string, id: string}|null  $customer
      * @param  array<int, array<string, mixed>>  $items
      * @param  array<int, array<string, mixed>>  $payments
-     * @param  array{gross: int, fees: int, net: int}  $totals
+     * @param  array{gross: int, discount: int, fees: int, net: int}  $totals
+     * @param  array{type: string, percent_bps: int|null, coupon_id: int|null, coupon_code: string|null}  $discount
      */
     public function __construct(
         public string $saleId,
@@ -28,6 +29,7 @@ final readonly class SaleCompletedPayload
         public array $items,
         public array $payments,
         public array $totals,
+        public array $discount,
     ) {}
 
     public static function fromSale(Sale $sale): self
@@ -54,8 +56,15 @@ final readonly class SaleCompletedPayload
             payments: $sale->payments->map(fn (SalePayment $payment): array => self::paymentToArray($payment))->all(),
             totals: [
                 'gross' => $sale->gross_amount,
+                'discount' => $sale->discount_amount,
                 'fees' => $sale->fees_amount,
                 'net' => $sale->net_amount,
+            ],
+            discount: [
+                'type' => $sale->discount_type->value,
+                'percent_bps' => $sale->discount_percent_bps,
+                'coupon_id' => $sale->coupon_id,
+                'coupon_code' => $sale->coupon_code_snapshot,
             ],
         );
     }
@@ -73,6 +82,7 @@ final readonly class SaleCompletedPayload
             'items' => $this->items,
             'payments' => $this->payments,
             'totals' => $this->totals,
+            'discount' => $this->discount,
         ];
     }
 

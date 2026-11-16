@@ -10,6 +10,11 @@ return [
         'payments.*.method' => 'payment method',
         'payments.*.amount' => 'payment amount',
         'payments.*.terminal_id' => 'terminal',
+        'discount' => 'discount',
+        'discount.mode' => 'discount type',
+        'discount.amount' => 'discount amount',
+        'discount.percent_bps' => 'discount percent',
+        'discount.code' => 'coupon',
     ],
 
     'validation' => [

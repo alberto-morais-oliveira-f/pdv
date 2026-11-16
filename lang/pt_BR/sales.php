@@ -19,6 +19,11 @@ return [
         'payments.*.method' => 'forma de pagamento',
         'payments.*.amount' => 'valor do pagamento',
         'payments.*.terminal_id' => 'maquineta',
+        'discount' => 'desconto',
+        'discount.mode' => 'tipo de desconto',
+        'discount.amount' => 'valor do desconto',
+        'discount.percent_bps' => 'percentual do desconto',
+        'discount.code' => 'cupom',
     ],
 
     'validation' => [

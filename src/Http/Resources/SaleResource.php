@@ -30,6 +30,7 @@ class SaleResource extends JsonResource
             'items' => $payload['items'],
             'payments' => $payload['payments'],
             'totals' => $payload['totals'],
+            'discount' => $payload['discount'],
         ];
     }
 }
