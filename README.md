@@ -33,9 +33,9 @@ protected only by the middleware in `pdv.routes.middleware`.
 - `SubstituteBindings` is always appended by the provider, even if the host replaces
   the middleware array.
 
-## Pages and Vue front (counter, terminals, sales)
+## Pages and Vue front (counter, terminals, coupons, sales)
 
-The package registers three Blade pages (`pdv.counter`, `pdv.terminals`, `pdv.sales`, under
+The package registers four Blade pages (`pdv.counter`, `pdv.terminals`, `pdv.coupons`, `pdv.sales`, under
 `pdv.web.prefix`, default `/pdv`). Each renders a shell with `#pdv-app` carrying `data-page`,
 `data-api-base`, `data-csrf`, `data-routes` and `data-strings` (pt-BR/en strings from `lang/*/ui.php`).
 
@@ -138,7 +138,8 @@ Payload (`SaleCompletedPayload`, integer cents): `sale_id`, `occurred_at`, `oper
 ## History and cancellation
 
 - `GET pdv/api/sales?date=YYYY-MM-DD&per_page=50` lists sales of a civil day (app timezone, default
-  today, any status, newest first, paginated). `GET pdv/api/sales/{id}` shows one sale.
+  today, any status, newest first, paginated). `GET pdv/api/sales?customer_type=&customer_id=&limit=5`
+  lists that customer's recent sales across days (used by the counter history). `GET pdv/api/sales/{id}` shows one sale.
 - `DELETE pdv/api/sales/{id}` cancels the sale (the row is kept with `status=cancelled`) only when it is
   `completed`, `occurred_at` is today (app timezone) and no card payment has
   `expected_settlement_at` before the start of today. Otherwise HTTP 422 (`errors.sale`).

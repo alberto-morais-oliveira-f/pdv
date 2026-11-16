@@ -21,7 +21,7 @@ return [
     ],
 
     /*
-    | Blade pages (counter, terminals, sales) that mount the Vue app.
+    | Blade pages (counter, terminals, coupons, sales) that mount the Vue app.
     | `middleware` is where the host MUST add auth, e.g. ['web', 'auth'] (the default has none).
     | `layout` is the host Blade layout the pages extend (e.g. 'layouts.master'); `section` is the
     | section that layout yields for the body. The default layout is a bare standalone HTML shell.

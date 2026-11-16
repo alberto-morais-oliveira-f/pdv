@@ -28,4 +28,21 @@ class SaleHistoryService
             ->paginate($perPage)
             ->withQueryString();
     }
+
+    /**
+     * Recent sales for a customer across days, newest first.
+     *
+     * @return LengthAwarePaginator<int, Sale>
+     */
+    public function forCustomer(string $customerType, string $customerId, int $limit = 5): LengthAwarePaginator
+    {
+        return Sale::query()
+            ->with(['items', 'payments'])
+            ->where('customer_type', $customerType)
+            ->where('customer_id', $customerId)
+            ->orderByDesc('occurred_at')
+            ->orderByDesc('id')
+            ->paginate($limit)
+            ->withQueryString();
+    }
 }

@@ -3,7 +3,7 @@
 @section($section)
     <div class="pdv-page">
         <nav class="pdv-nav" aria-label="{{ __('PDV') }}">
-            @foreach (['counter', 'terminals', 'sales'] as $item)
+            @foreach (['counter', 'terminals', 'coupons', 'sales'] as $item)
                 <a
                     href="{{ $routes[$item] }}"
                     data-testid="pdv-nav-{{ $item }}"
@@ -13,6 +13,8 @@
                         <i class="fa-solid fa-cash-register"></i>
                     @elseif ($item === 'terminals')
                         <i class="fa-solid fa-credit-card"></i>
+                    @elseif ($item === 'coupons')
+                        <i class="fa-solid fa-ticket"></i>
                     @else
                         <i class="fa-solid fa-receipt"></i>
                     @endif

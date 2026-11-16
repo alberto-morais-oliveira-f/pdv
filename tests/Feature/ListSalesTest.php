@@ -98,6 +98,40 @@ it('shows a past or cancelled sale too', function (): void {
     $this->getJson("/pdv/api/sales/{$cancelled->id}")->assertOk()->assertJsonPath('data.status', 'cancelled');
 });
 
+it('lists recent sales for a customer across days, newest first', function (): void {
+    $older = SaleBuilder::make(now()->subDays(3));
+    $older->update(['customer_type' => 'App\\Models\\Student', 'customer_id' => '42']);
+    $newer = SaleBuilder::make(now()->subDay());
+    $newer->update(['customer_type' => 'App\\Models\\Student', 'customer_id' => '42']);
+    $other = SaleBuilder::make(now());
+    $other->update(['customer_type' => 'App\\Models\\Student', 'customer_id' => '99']);
+    SaleBuilder::make(now()->subDays(2));
+
+    $response = $this->getJson('/pdv/api/sales?customer_type='.urlencode('App\\Models\\Student').'&customer_id=42&limit=5')
+        ->assertOk()
+        ->assertJsonCount(2, 'data');
+
+    expect(array_column($response->json('data'), 'id'))->toBe([$newer->id, $older->id]);
+});
+
+it('caps customer history by limit', function (): void {
+    foreach (range(1, 3) as $hour) {
+        $sale = SaleBuilder::make(now()->subDays($hour)->setTime(10, 0));
+        $sale->update(['customer_type' => 'Student', 'customer_id' => '7']);
+    }
+
+    $this->getJson('/pdv/api/sales?customer_type=Student&customer_id=7&limit=2')
+        ->assertOk()
+        ->assertJsonCount(2, 'data')
+        ->assertJsonPath('meta.total', 3);
+});
+
+it('rejects a customer filter missing its pair', function (): void {
+    $this->getJson('/pdv/api/sales?customer_id=42')
+        ->assertUnprocessable()
+        ->assertJsonValidationErrors(['customer_type']);
+});
+
 it('returns 404 when showing an unknown or malformed id', function (string $id): void {
     $this->getJson("/pdv/api/sales/{$id}")->assertNotFound();
 })->with([

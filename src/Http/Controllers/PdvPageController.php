@@ -19,6 +19,11 @@ class PdvPageController extends Controller
         return $this->page('terminals');
     }
 
+    public function coupons(): View
+    {
+        return $this->page('coupons');
+    }
+
     public function sales(): View
     {
         return $this->page('sales');
@@ -37,6 +42,7 @@ class PdvPageController extends Controller
             'routes' => [
                 'counter' => route('pdv.counter'),
                 'terminals' => route('pdv.terminals'),
+                'coupons' => route('pdv.coupons'),
                 'sales' => route('pdv.sales'),
             ],
             'strings' => (array) trans('pdv::ui'),

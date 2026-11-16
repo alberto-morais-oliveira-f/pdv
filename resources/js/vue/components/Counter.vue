@@ -1,5 +1,5 @@
 <script setup>
-import { computed, inject, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, inject, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ApiError } from '../../api.js';
 import { centsToInput, formatMoney, parseCents } from '../../money.js';
 
@@ -8,12 +8,14 @@ const t = inject('pdvT');
 
 const DEBOUNCE_MS = 300;
 const TYPE_FILTERS = ['all', 'subscription', 'service', 'product'];
+const DISCOUNT_MODES = ['none', 'manual_fixed', 'manual_percent', 'coupon'];
 
 const query = ref('');
 const catalog = ref([]);
 const searching = ref(false);
 const searchError = ref('');
 const typeFilter = ref('all');
+const highlightPlans = ref(false);
 let searchTimer = null;
 let searchSeq = 0;
 
@@ -32,14 +34,44 @@ const customer = ref(null);
 let customerTimer = null;
 let customerSeq = 0;
 
+const history = ref([]);
+const historyLoading = ref(false);
+const historyError = ref('');
+const upgradeNotice = ref('');
+const upgradeNoticeKind = ref('success');
+
+const discountMode = ref('none');
+const discountFixed = ref('');
+const discountPercent = ref('');
+const couponCode = ref('');
+const appliedCoupon = ref(null);
+const couponApplying = ref(false);
+const couponError = ref('');
+
 const submitting = ref(false);
 const submitError = ref('');
 const completedSale = ref(null);
 
 const total = computed(() => cart.value.reduce((sum, line) => sum + line.qty * line.unit_amount, 0));
+const discountAmount = computed(() => resolveDiscount(total.value));
+const payable = computed(() => Math.max(0, total.value - discountAmount.value));
 const paid = computed(() => payments.value.reduce((sum, line) => sum + line.amount, 0));
-const remaining = computed(() => total.value - paid.value);
-const canFinalize = computed(() => !submitting.value && cart.value.length > 0 && payments.value.length > 0 && remaining.value === 0 && !needsCustomer.value);
+const remaining = computed(() => payable.value - paid.value);
+const canFinalize = computed(() => {
+    if (submitting.value || cart.value.length === 0 || needsCustomer.value) {
+        return false;
+    }
+
+    if (discountMode.value === 'coupon' && appliedCoupon.value === null) {
+        return false;
+    }
+
+    if (remaining.value !== 0) {
+        return false;
+    }
+
+    return payable.value === 0 || payments.value.length > 0;
+});
 const activeTerminals = computed(() => terminals.value.filter((terminal) => terminal.active));
 const needsCustomer = computed(() => cart.value.some((line) => line.type === 'subscription') && customer.value === null);
 
@@ -64,6 +96,111 @@ function lineKey(item) {
 
 function typeLabel(type) {
     return t(`counter.types.${type}`);
+}
+
+function percentAmount(gross, bps) {
+    const clamped = Math.min(10000, Math.max(0, bps));
+    const amount = Math.floor(gross / 10000) * clamped + Math.floor((gross % 10000) * clamped / 10000);
+
+    return Math.min(gross, Math.max(0, amount));
+}
+
+function parsePercentBps(text) {
+    const number = Number.parseFloat(String(text ?? '').trim().replace(',', '.'));
+
+    return Number.isFinite(number) && number > 0 ? Math.round(number * 100) : 0;
+}
+
+function couponDiscount(gross, coupon) {
+    if (coupon.type === 'percent') {
+        return percentAmount(gross, coupon.value);
+    }
+
+    return Math.min(gross, Math.max(0, coupon.value));
+}
+
+function resolveDiscount(gross) {
+    if (discountMode.value === 'manual_fixed') {
+        return Math.min(gross, Math.max(0, parseCents(discountFixed.value)));
+    }
+
+    if (discountMode.value === 'manual_percent') {
+        return percentAmount(gross, parsePercentBps(discountPercent.value));
+    }
+
+    if (discountMode.value === 'coupon' && appliedCoupon.value) {
+        return couponDiscount(gross, appliedCoupon.value);
+    }
+
+    return 0;
+}
+
+function setDiscountMode(mode) {
+    discountMode.value = mode;
+    couponError.value = '';
+
+    if (mode !== 'manual_fixed') {
+        discountFixed.value = '';
+    }
+
+    if (mode !== 'manual_percent') {
+        discountPercent.value = '';
+    }
+
+    if (mode !== 'coupon') {
+        couponCode.value = '';
+        appliedCoupon.value = null;
+    }
+}
+
+async function applyCoupon() {
+    couponError.value = '';
+    appliedCoupon.value = null;
+
+    const code = couponCode.value.trim();
+
+    if (code === '') {
+        couponError.value = t('counter.discount_code_required');
+
+        return;
+    }
+
+    couponApplying.value = true;
+
+    try {
+        const data = await api.get('/coupons/validate', { code, gross: total.value });
+        appliedCoupon.value = data;
+        couponCode.value = data.code;
+    } catch (error) {
+        couponError.value = error instanceof ApiError ? error.firstError : t('common.error');
+    } finally {
+        couponApplying.value = false;
+    }
+}
+
+function discountPayload() {
+    if (discountMode.value === 'none') {
+        return null;
+    }
+
+    if (discountMode.value === 'manual_fixed') {
+        return { mode: 'manual_fixed', amount: parseCents(discountFixed.value) };
+    }
+
+    if (discountMode.value === 'manual_percent') {
+        return { mode: 'manual_percent', percent_bps: parsePercentBps(discountPercent.value) };
+    }
+
+    return { mode: 'coupon', code: appliedCoupon.value?.code ?? couponCode.value.trim() };
+}
+
+function resetDiscount() {
+    discountMode.value = 'none';
+    discountFixed.value = '';
+    discountPercent.value = '';
+    couponCode.value = '';
+    appliedCoupon.value = null;
+    couponError.value = '';
 }
 
 async function loadCatalog() {
@@ -142,10 +279,79 @@ function selectCustomer(row) {
     customerResults.value = [];
     customerHasSearched.value = false;
     customerSearchError.value = '';
+    upgradeNotice.value = '';
+    loadHistory();
 }
 
 function clearCustomer() {
     customer.value = null;
+    history.value = [];
+    historyError.value = '';
+    upgradeNotice.value = '';
+}
+
+async function loadHistory() {
+    if (customer.value === null) {
+        history.value = [];
+        historyError.value = '';
+
+        return;
+    }
+
+    historyLoading.value = true;
+    historyError.value = '';
+
+    try {
+        const response = await api.get('/sales', {
+            customer_type: customer.value.type,
+            customer_id: customer.value.id,
+            limit: 5,
+        });
+        history.value = response.data ?? [];
+    } catch (error) {
+        history.value = [];
+        historyError.value = error instanceof ApiError ? error.firstError : t('common.error');
+    } finally {
+        historyLoading.value = false;
+    }
+}
+
+function formatHistoryDate(iso) {
+    return new Date(iso).toLocaleString('pt-BR', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+}
+
+function historyPayable(sale) {
+    const gross = sale.totals?.gross ?? 0;
+    const discount = sale.totals?.discount ?? 0;
+
+    return Math.max(0, gross - discount);
+}
+
+async function addRenewalPlan() {
+    upgradeNotice.value = '';
+    typeFilter.value = 'subscription';
+    highlightPlans.value = true;
+
+    await nextTick();
+    document.querySelector('[data-testid="pdv-plans-section"]')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+    const plan = subscriptions.value[0];
+
+    if (!plan) {
+        upgradeNoticeKind.value = 'error';
+        upgradeNotice.value = t('counter.upgrade_empty');
+
+        return;
+    }
+
+    addToCart(plan);
+    upgradeNoticeKind.value = 'success';
+    upgradeNotice.value = t('counter.upgrade_added');
 }
 
 onBeforeUnmount(() => {
@@ -193,6 +399,7 @@ function clearCart() {
     draft.value = { method: 'cash', amount: '', terminal_id: '' };
     paymentError.value = '';
     submitError.value = '';
+    resetDiscount();
 }
 
 function prefillAmount() {
@@ -261,6 +468,17 @@ function resetSale() {
     customerResults.value = [];
     customerHasSearched.value = false;
     customerSearchError.value = '';
+    history.value = [];
+    historyError.value = '';
+    upgradeNotice.value = '';
+    highlightPlans.value = false;
+}
+
+function completedPayable(sale) {
+    const gross = sale.totals?.gross ?? 0;
+    const discount = sale.totals?.discount ?? 0;
+
+    return Math.max(0, gross - discount);
 }
 
 async function finalize() {
@@ -303,6 +521,12 @@ async function finalize() {
             payload.customer_id = String(customer.value.id);
         }
 
+        const discount = discountPayload();
+
+        if (discount !== null) {
+            payload.discount = discount;
+        }
+
         const response = await api.post('/sales', payload);
 
         completedSale.value = response.data;
@@ -319,7 +543,7 @@ async function finalize() {
     <div class="pdv-counter pdv-counter--floor" data-testid="pdv-counter">
         <div v-if="completedSale" class="pdv-alert pdv-alert--success" role="status" data-testid="pdv-sale-success">
             {{ t('counter.success') }}
-            <strong class="ms-1">{{ formatMoney(completedSale.totals.gross) }}</strong>
+            <strong class="ms-1">{{ formatMoney(completedPayable(completedSale)) }}</strong>
             <button type="button" class="btn btn-sm btn-success ms-2" @click="completedSale = null">{{ t('counter.new_sale') }}</button>
         </div>
 
@@ -376,6 +600,48 @@ async function finalize() {
                             <i class="fa-solid fa-triangle-exclamation me-1"></i>
                             {{ t('counter.customer_hint') }}
                         </p>
+
+                        <template v-if="customer">
+                            <button
+                                type="button"
+                                class="btn btn-outline-primary w-100 mt-3"
+                                data-testid="pdv-upgrade"
+                                @click="addRenewalPlan"
+                            >
+                                <i class="fa-solid fa-rotate me-1"></i>
+                                {{ t('counter.upgrade') }}
+                            </button>
+                            <div
+                                v-if="upgradeNotice"
+                                class="pdv-alert mt-2"
+                                :class="upgradeNoticeKind === 'error' ? 'pdv-alert--error' : 'pdv-alert--success'"
+                                role="status"
+                            >
+                                {{ upgradeNotice }}
+                            </div>
+
+                            <h6 class="pdv-section-title mt-4">
+                                <span class="pdv-accent"></span>
+                                {{ t('counter.history') }}
+                            </h6>
+                            <p v-if="historyLoading" class="pdv-muted mb-0">{{ t('counter.history_loading') }}</p>
+                            <div v-else-if="historyError" class="pdv-alert pdv-alert--error" role="alert">
+                                {{ historyError }}
+                                <button type="button" class="btn btn-sm btn-light ms-2" @click="loadHistory">{{ t('common.retry') }}</button>
+                            </div>
+                            <p v-else-if="history.length === 0" class="pdv-muted mb-0">{{ t('counter.history_empty') }}</p>
+                            <ul v-else class="list-group list-group-flush pdv-history" data-testid="pdv-history">
+                                <li v-for="sale in history" :key="sale.id" class="list-group-item px-0">
+                                    <div class="d-flex justify-content-between gap-2">
+                                        <span class="fw-semibold">{{ formatHistoryDate(sale.occurred_at) }}</span>
+                                        <span>{{ formatMoney(historyPayable(sale)) }}</span>
+                                    </div>
+                                    <small class="pdv-muted">
+                                        {{ (sale.items ?? []).map((item) => item.description).join(', ') || t(`sales.statuses.${sale.status}`, sale.status) }}
+                                    </small>
+                                </li>
+                            </ul>
+                        </template>
                     </div>
                 </div>
             </aside>
@@ -422,17 +688,23 @@ async function finalize() {
 
                         <div v-else class="pdv-scroll">
                             <template v-if="typeFilter === 'all'">
-                                <div v-if="subscriptions.length" class="mb-3">
+                                <div
+                                    v-if="subscriptions.length"
+                                    class="mb-3"
+                                    :class="{ 'pdv-plans-highlight': highlightPlans }"
+                                    data-testid="pdv-plans-section"
+                                >
                                     <h6 class="pdv-section-title">
                                         <span class="pdv-accent"></span>
                                         {{ t('counter.sections.subscriptions') }}
                                     </h6>
                                     <div class="pdv-item-grid">
                                         <button
-                                            v-for="item in subscriptions"
+                                            v-for="(item, index) in subscriptions"
                                             :key="lineKey(item)"
                                             type="button"
                                             class="pdv-item-card"
+                                            :class="{ 'is-highlight': highlightPlans && index === 0 }"
                                             data-testid="pdv-catalog-item"
                                             @click="addToCart(item)"
                                         >
@@ -495,12 +767,13 @@ async function finalize() {
                                 </div>
                             </template>
 
-                            <div v-else class="pdv-item-grid">
+                            <div v-else class="pdv-item-grid" :class="{ 'pdv-plans-highlight': highlightPlans && typeFilter === 'subscription' }" :data-testid="typeFilter === 'subscription' ? 'pdv-plans-section' : undefined">
                                 <button
-                                    v-for="item in visibleCatalog"
+                                    v-for="(item, index) in visibleCatalog"
                                     :key="lineKey(item)"
                                     type="button"
                                     class="pdv-item-card"
+                                    :class="{ 'is-highlight': highlightPlans && typeFilter === 'subscription' && index === 0 }"
                                     data-testid="pdv-catalog-item"
                                     @click="addToCart(item)"
                                 >
@@ -559,7 +832,89 @@ async function finalize() {
                             </div>
                         </div>
 
+                        <div class="pdv-discount mb-3" data-testid="pdv-discount">
+                            <div class="mb-2 small text-uppercase fw-semibold pdv-muted">{{ t('counter.discount') }}</div>
+                            <div class="pdv-tabs" role="tablist">
+                                <button
+                                    v-for="mode in DISCOUNT_MODES"
+                                    :key="mode"
+                                    type="button"
+                                    class="btn btn-sm"
+                                    :class="discountMode === mode ? 'btn-primary' : 'btn-outline-primary'"
+                                    :data-testid="`pdv-discount-${mode}`"
+                                    @click="setDiscountMode(mode)"
+                                >
+                                    {{ t(`counter.discount_modes.${mode}`) }}
+                                </button>
+                            </div>
+
+                            <div v-if="discountMode === 'manual_fixed'" class="mt-2">
+                                <label class="form-label" for="pdv-discount-fixed">{{ t('counter.discount_fixed') }}</label>
+                                <input
+                                    id="pdv-discount-fixed"
+                                    v-model="discountFixed"
+                                    type="text"
+                                    inputmode="decimal"
+                                    class="form-control"
+                                    placeholder="0,00"
+                                    data-testid="pdv-discount-fixed"
+                                >
+                            </div>
+
+                            <div v-if="discountMode === 'manual_percent'" class="mt-2">
+                                <label class="form-label" for="pdv-discount-percent">{{ t('counter.discount_percent') }}</label>
+                                <input
+                                    id="pdv-discount-percent"
+                                    v-model="discountPercent"
+                                    type="number"
+                                    min="0.01"
+                                    max="100"
+                                    step="0.01"
+                                    class="form-control"
+                                    data-testid="pdv-discount-percent"
+                                >
+                            </div>
+
+                            <div v-if="discountMode === 'coupon'" class="mt-2">
+                                <label class="form-label" for="pdv-coupon-code">{{ t('counter.discount_code') }}</label>
+                                <div class="input-group">
+                                    <input
+                                        id="pdv-coupon-code"
+                                        v-model="couponCode"
+                                        type="text"
+                                        class="form-control text-uppercase"
+                                        maxlength="64"
+                                        autocomplete="off"
+                                        data-testid="pdv-coupon-code"
+                                        @keyup.enter="applyCoupon"
+                                    >
+                                    <button
+                                        type="button"
+                                        class="btn btn-secondary"
+                                        data-testid="pdv-coupon-apply"
+                                        :disabled="couponApplying"
+                                        @click="applyCoupon"
+                                    >
+                                        {{ couponApplying ? t('common.loading') : t('counter.discount_apply') }}
+                                    </button>
+                                </div>
+                                <div v-if="appliedCoupon" class="pdv-alert pdv-alert--success mt-2 mb-0" role="status">
+                                    {{ t('counter.discount_applied') }}
+                                    <strong class="ms-1">{{ appliedCoupon.code }}</strong>
+                                </div>
+                                <div v-if="couponError" class="pdv-alert pdv-alert--error mt-2 mb-0" role="alert">{{ couponError }}</div>
+                            </div>
+                        </div>
+
                         <div class="pdv-summary">
+                            <div class="pdv-summary__row">
+                                <span>{{ t('counter.gross') }}</span>
+                                <span data-testid="pdv-gross">{{ formatMoney(total) }}</span>
+                            </div>
+                            <div v-if="discountAmount > 0" class="pdv-summary__row text-success">
+                                <span>{{ t('counter.discount') }}</span>
+                                <span data-testid="pdv-discount-amount">− {{ formatMoney(discountAmount) }}</span>
+                            </div>
                             <div class="pdv-summary__row">
                                 <span>{{ t('counter.paid') }}</span>
                                 <span>{{ formatMoney(paid) }}</span>
@@ -570,7 +925,7 @@ async function finalize() {
                             </div>
                             <div class="pdv-summary__total">
                                 <span class="text-uppercase small fw-bold">{{ t('counter.total') }}</span>
-                                <strong data-testid="pdv-total">{{ formatMoney(total) }}</strong>
+                                <strong data-testid="pdv-total">{{ formatMoney(payable) }}</strong>
                             </div>
                         </div>
 

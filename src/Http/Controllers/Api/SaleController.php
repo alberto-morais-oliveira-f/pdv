@@ -27,6 +27,14 @@ class SaleController extends Controller
 
     public function index(ListSalesRequest $request): AnonymousResourceCollection
     {
+        if ($request->hasCustomer()) {
+            return SaleResource::collection($this->history->forCustomer(
+                (string) $request->customerType(),
+                (string) $request->customerId(),
+                $request->perPage(),
+            ));
+        }
+
         return SaleResource::collection($this->history->forDay($request->day(), $request->perPage()));
     }
 

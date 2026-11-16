@@ -20,6 +20,7 @@ it('renders each page shell with the vue mount point and api base', function (st
 })->with([
     'counter' => ['pdv.counter', '/pdv/counter', 'counter'],
     'terminals' => ['pdv.terminals', '/pdv/terminals', 'terminals'],
+    'coupons' => ['pdv.coupons', '/pdv/coupons', 'coupons'],
     'sales' => ['pdv.sales', '/pdv/sales', 'sales'],
 ]);
 
@@ -49,5 +50,7 @@ it('ships routes and strings as valid json attributes', function (): void {
     preg_match('/data-routes="([^"]*)"/', $html, $routes);
 
     expect(json_decode(html_entity_decode($strings[1]), true)['counter']['finalize'])->toBe('Finalizar venda')
-        ->and(json_decode(html_entity_decode($routes[1]), true)['sales'])->toBe(route('pdv.sales'));
+        ->and(json_decode(html_entity_decode($strings[1]), true)['nav']['coupons'])->toBe('Cupons')
+        ->and(json_decode(html_entity_decode($routes[1]), true)['sales'])->toBe(route('pdv.sales'))
+        ->and(json_decode(html_entity_decode($routes[1]), true)['coupons'])->toBe(route('pdv.coupons'));
 });

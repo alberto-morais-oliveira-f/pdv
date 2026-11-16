@@ -25,6 +25,9 @@ class ListSalesRequest extends FormRequest
         return [
             'date' => ['sometimes', 'date_format:Y-m-d'],
             'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'customer_type' => ['nullable', 'string', 'max:255', 'required_with:customer_id'],
+            'customer_id' => ['nullable', 'string', 'max:255', 'required_with:customer_type'],
         ];
     }
 
@@ -43,7 +46,32 @@ class ListSalesRequest extends FormRequest
 
     public function perPage(): int
     {
-        return (int) ($this->validated('per_page') ?? 50);
+        $validated = $this->validated();
+
+        if (isset($validated['limit'])) {
+            return (int) $validated['limit'];
+        }
+
+        return (int) ($validated['per_page'] ?? 50);
+    }
+
+    public function hasCustomer(): bool
+    {
+        return $this->customerType() !== null && $this->customerId() !== null;
+    }
+
+    public function customerType(): ?string
+    {
+        $type = $this->validated('customer_type');
+
+        return is_string($type) && $type !== '' ? $type : null;
+    }
+
+    public function customerId(): ?string
+    {
+        $id = $this->validated('customer_id');
+
+        return is_string($id) && $id !== '' ? $id : null;
     }
 
     /**

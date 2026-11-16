@@ -15,8 +15,9 @@ function readJson(element, attribute) {
 /**
  * Mounts the PDV on the element matching `selector`.
  *
- * Reads `data-page`, `data-api-base`, `data-csrf`, `data-routes` and `data-strings`
- * rendered by the package Blade shell. Returns the Vue app, or null when the element is absent.
+ * Reads `data-page` (counter|terminals|coupons|sales), `data-api-base`, `data-csrf`,
+ * `data-routes` and `data-strings` rendered by the package Blade shell.
+ * Returns the Vue app, or null when the element is absent.
  *
  * @param {string} selector
  */
