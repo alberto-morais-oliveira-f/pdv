@@ -23,6 +23,16 @@ afterEach(function (): void {
     Carbon::setTestNow();
 });
 
+it('is cancellable only for completed sales from today without a settled card', function (): void {
+    expect(SaleBuilder::make(now())->isCancellable())->toBeTrue();
+    expect(SaleBuilder::make(now()->subDay())->isCancellable())->toBeFalse();
+    expect(SaleBuilder::make(now(), SaleStatus::Cancelled)->isCancellable())->toBeFalse();
+    expect(SaleBuilder::make(now(), SaleStatus::Draft)->isCancellable())->toBeFalse();
+    expect(SaleBuilder::make(now(), card: [])->isCancellable())->toBeTrue();
+    expect(SaleBuilder::make(now(), card: ['expected_settlement_at' => now()->startOfDay()])->isCancellable())->toBeTrue();
+    expect(SaleBuilder::make(now(), card: ['expected_settlement_at' => now()->subDay()->startOfDay()])->isCancellable())->toBeFalse();
+});
+
 it('cancels a completed sale from today and dispatches SaleCancelled', function (): void {
     Event::fake([SaleCancelled::class]);
     $sale = SaleBuilder::make(now()->subHours(3));

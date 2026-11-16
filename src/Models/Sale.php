@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Am2tec\Pdv\Models;
 
 use Am2tec\Pdv\Enums\DiscountType;
+use Am2tec\Pdv\Enums\PaymentMethod;
 use Am2tec\Pdv\Enums\SaleStatus;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
@@ -108,5 +109,31 @@ class Sale extends Model
     public function payments(): HasMany
     {
         return $this->hasMany(SalePayment::class, 'sale_id')->orderBy('id');
+    }
+
+    /**
+     * Same refuse conditions as SaleCancellationService, as a boolean for UI.
+     * Completed, occurred today in the app timezone, and no card already settled.
+     */
+    public function isCancellable(): bool
+    {
+        if ($this->status !== SaleStatus::Completed) {
+            return false;
+        }
+
+        $timezone = (string) config('app.timezone');
+        $now = Carbon::now($timezone);
+
+        if ($this->occurred_at->copy()->setTimezone($timezone)->toDateString() !== $now->toDateString()) {
+            return false;
+        }
+
+        $startOfToday = $now->copy()->startOfDay();
+
+        return ! $this->payments->contains(
+            static fn (SalePayment $payment): bool => $payment->method === PaymentMethod::Card
+                && $payment->expected_settlement_at !== null
+                && $payment->expected_settlement_at->lt($startOfToday),
+        );
     }
 }

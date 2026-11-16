@@ -6,6 +6,7 @@ namespace Am2tec\Pdv\Http\Controllers;
 
 use Illuminate\Contracts\View\View;
 use Illuminate\Routing\Controller;
+use Illuminate\Support\Facades\Route;
 
 class PdvPageController extends Controller
 {
@@ -43,7 +44,9 @@ class PdvPageController extends Controller
                 'counter' => route('pdv.counter'),
                 'terminals' => route('pdv.terminals'),
                 'coupons' => route('pdv.coupons'),
-                'sales' => route('pdv.sales'),
+                'sales' => Route::has('pdv.sales.index')
+                    ? route('pdv.sales.index')
+                    : route('pdv.sales'),
             ],
             'strings' => (array) trans('pdv::ui'),
         ]);
