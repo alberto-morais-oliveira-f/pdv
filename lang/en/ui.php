@@ -3,7 +3,7 @@
 declare(strict_types=1);
 
 return [
-    'nav' => ['counter' => 'Counter', 'terminals' => 'Terminals', 'sales' => 'Sales'],
+    'nav' => ['counter' => 'Counter', 'terminals' => 'Terminals', 'sales' => 'Sales', 'coupons' => 'Coupons'],
     'common' => [
         'loading' => 'Loading...',
         'error' => 'Could not complete the operation. Please try again.',

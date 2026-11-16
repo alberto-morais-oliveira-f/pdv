@@ -64,5 +64,7 @@ return [
         'cancel_not_completed' => 'Só é possível cancelar vendas concluídas.',
         'cancel_not_today' => 'Só é possível cancelar vendas realizadas hoje.',
         'cancel_card_settled' => 'Não é possível cancelar: um pagamento no cartão já foi liquidado.',
+        'discount_coupon_required' => 'Informe um cupom válido para aplicar o desconto.',
+        'discount_invalid_mode' => 'O tipo de desconto informado é inválido.',
     ],
 ];

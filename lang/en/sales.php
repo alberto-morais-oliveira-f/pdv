@@ -33,5 +33,7 @@ return [
         'cancel_not_completed' => 'Only completed sales can be cancelled.',
         'cancel_not_today' => 'Only sales made today can be cancelled.',
         'cancel_card_settled' => 'Cannot cancel: a card payment has already settled.',
+        'discount_coupon_required' => 'A valid coupon is required to apply this discount.',
+        'discount_invalid_mode' => 'The given discount type is invalid.',
     ],
 ];
