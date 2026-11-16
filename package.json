@@ -1,0 +1,14 @@
+{
+    "name": "@am2tec/pdv",
+    "private": true,
+    "version": "0.1.0",
+    "description": "PDV front-end sources (Vue 3 SFCs). Compiled by the host Vite build, not built here.",
+    "type": "module",
+    "main": "resources/js/pdv.js",
+    "exports": {
+        ".": "./resources/js/pdv.js"
+    },
+    "peerDependencies": {
+        "vue": "^3.4"
+    }
+}

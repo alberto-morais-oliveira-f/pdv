@@ -1,0 +1,41 @@
+{
+    "name": "am2tec/pdv",
+    "description": "Point of sale (PDV) for Laravel multi-tenant hosts.",
+    "type": "library",
+    "require": {
+        "php": "^8.3",
+        "illuminate/support": "^11|^12|^13",
+        "illuminate/database": "^11|^12|^13"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9|^10",
+        "pestphp/pest": "^3.0",
+        "laravel/pint": "^1.0",
+        "orchestra/pest-plugin-testbench": "^3.3"
+    },
+    "autoload": {
+        "psr-4": {
+            "Am2tec\\Pdv\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Am2tec\\Pdv\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": ["Am2tec\\Pdv\\Providers\\PdvServiceProvider"]
+        }
+    },
+    "scripts": {
+        "test": "pest"
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true,
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
