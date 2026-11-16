@@ -7,12 +7,13 @@ const api = inject('pdvApi');
 const t = inject('pdvT');
 
 const DEBOUNCE_MS = 300;
+const TYPE_FILTERS = ['all', 'subscription', 'service', 'product'];
 
 const query = ref('');
-const results = ref([]);
+const catalog = ref([]);
 const searching = ref(false);
 const searchError = ref('');
-const hasSearched = ref(false);
+const typeFilter = ref('all');
 let searchTimer = null;
 let searchSeq = 0;
 
@@ -38,40 +39,49 @@ const completedSale = ref(null);
 const total = computed(() => cart.value.reduce((sum, line) => sum + line.qty * line.unit_amount, 0));
 const paid = computed(() => payments.value.reduce((sum, line) => sum + line.amount, 0));
 const remaining = computed(() => total.value - paid.value);
-const canFinalize = computed(() => !submitting.value && cart.value.length > 0 && payments.value.length > 0 && remaining.value === 0);
+const canFinalize = computed(() => !submitting.value && cart.value.length > 0 && payments.value.length > 0 && remaining.value === 0 && !needsCustomer.value);
 const activeTerminals = computed(() => terminals.value.filter((terminal) => terminal.active));
 const needsCustomer = computed(() => cart.value.some((line) => line.type === 'subscription') && customer.value === null);
+
+const subscriptions = computed(() => filteredByType('subscription'));
+const services = computed(() => filteredByType('service'));
+const products = computed(() => filteredByType('product'));
+const visibleCatalog = computed(() => {
+    if (typeFilter.value === 'all') {
+        return catalog.value;
+    }
+
+    return catalog.value.filter((item) => item.type === typeFilter.value);
+});
+
+function filteredByType(type) {
+    return catalog.value.filter((item) => item.type === type);
+}
 
 function lineKey(item) {
     return `${item.type}|${item.source_type}|${item.source_id}`;
 }
 
-async function runSearch() {
+function typeLabel(type) {
+    return t(`counter.types.${type}`);
+}
+
+async function loadCatalog() {
     const term = query.value.trim();
     const seq = ++searchSeq;
-
-    if (term === '') {
-        results.value = [];
-        hasSearched.value = false;
-        searching.value = false;
-        searchError.value = '';
-
-        return;
-    }
 
     searching.value = true;
     searchError.value = '';
 
     try {
-        const data = await api.get('/catalog', { q: term });
+        const data = await api.get('/catalog', { q: term, limit: 48 });
 
         if (seq === searchSeq) {
-            results.value = data;
-            hasSearched.value = true;
+            catalog.value = Array.isArray(data) ? data : [];
         }
     } catch (error) {
         if (seq === searchSeq) {
-            results.value = [];
+            catalog.value = [];
             searchError.value = error instanceof ApiError ? error.firstError : t('common.error');
         }
     } finally {
@@ -83,7 +93,7 @@ async function runSearch() {
 
 watch(query, () => {
     clearTimeout(searchTimer);
-    searchTimer = setTimeout(runSearch, DEBOUNCE_MS);
+    searchTimer = setTimeout(loadCatalog, DEBOUNCE_MS);
 });
 
 async function runCustomerSearch() {
@@ -144,6 +154,8 @@ onBeforeUnmount(() => {
 });
 
 onMounted(async () => {
+    await loadCatalog();
+
     try {
         const response = await api.get('/terminals');
         terminals.value = response.data ?? [];
@@ -162,6 +174,7 @@ function addToCart(item) {
     }
 
     completedSale.value = null;
+    prefillAmount();
 }
 
 function setQty(line, value) {
@@ -174,11 +187,29 @@ function removeLine(index) {
     cart.value.splice(index, 1);
 }
 
+function clearCart() {
+    cart.value = [];
+    payments.value = [];
+    draft.value = { method: 'cash', amount: '', terminal_id: '' };
+    paymentError.value = '';
+    submitError.value = '';
+}
+
 function prefillAmount() {
     draft.value.amount = remaining.value > 0 ? centsToInput(remaining.value) : '';
 }
 
 watch(remaining, prefillAmount);
+
+function selectMethod(method) {
+    draft.value.method = method;
+
+    if (method !== 'card') {
+        draft.value.terminal_id = '';
+    }
+
+    prefillAmount();
+}
 
 function addPayment() {
     paymentError.value = '';
@@ -202,6 +233,17 @@ function addPayment() {
         amount,
         terminal_id: draft.value.method === 'card' ? Number(draft.value.terminal_id) : null,
     });
+
+    prefillAmount();
+}
+
+function payRemainingQuick() {
+    if (remaining.value <= 0) {
+        return;
+    }
+
+    draft.value.amount = centsToInput(remaining.value);
+    addPayment();
 }
 
 function removePayment(index) {
@@ -213,11 +255,7 @@ function terminalName(id) {
 }
 
 function resetSale() {
-    cart.value = [];
-    payments.value = [];
-    draft.value = { method: 'cash', amount: '', terminal_id: '' };
-    submitError.value = '';
-    paymentError.value = '';
+    clearCart();
     customer.value = null;
     customerQuery.value = '';
     customerResults.value = [];
@@ -227,6 +265,12 @@ function resetSale() {
 
 async function finalize() {
     submitError.value = '';
+
+    if (needsCustomer.value) {
+        submitError.value = t('counter.customer_hint');
+
+        return;
+    }
 
     if (remaining.value !== 0) {
         submitError.value = t('counter.payment_mismatch');
@@ -272,150 +316,355 @@ async function finalize() {
 </script>
 
 <template>
-    <div class="pdv-counter">
-        <h4>{{ t('counter.title') }}</h4>
-
-        <div v-if="completedSale" class="pdv-alert pdv-alert--success" role="status">
+    <div class="pdv-counter pdv-counter--floor" data-testid="pdv-counter">
+        <div v-if="completedSale" class="pdv-alert pdv-alert--success" role="status" data-testid="pdv-sale-success">
             {{ t('counter.success') }}
-            <strong>{{ formatMoney(completedSale.totals.gross) }}</strong>
+            <strong class="ms-1">{{ formatMoney(completedSale.totals.gross) }}</strong>
             <button type="button" class="btn btn-sm btn-success ms-2" @click="completedSale = null">{{ t('counter.new_sale') }}</button>
         </div>
 
-        <div class="pdv-grid">
-            <section class="pdv-panel">
-                <div class="pdv-field">
-                    <label for="pdv-customer-search">{{ t('counter.customer_optional') }}</label>
-                    <div v-if="customer" class="pdv-row">
-                        <strong>{{ customer.label }}</strong>
-                        <button type="button" class="btn btn-sm btn-outline-danger" data-testid="pdv-customer-clear" @click="clearCustomer">{{ t('counter.customer_clear') }}</button>
+        <div class="pdv-floor">
+            <!-- Coluna 1: aluno -->
+            <aside class="pdv-col">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fa-solid fa-user-check me-1 text-primary"></i>
+                            {{ t('counter.customer') }}
+                        </h5>
+                        <span class="badge badge-light text-dark">{{ t('counter.customer_plans_badge') }}</span>
                     </div>
-                    <input v-else id="pdv-customer-search" v-model="customerQuery" type="search" class="form-control" autocomplete="off" data-testid="pdv-customer-search" :placeholder="t('counter.customer_placeholder')">
-                </div>
+                    <div class="card-body">
+                        <div v-if="customer" class="pdv-customer-chip" data-testid="pdv-customer-selected">
+                            <div>
+                                <div class="fw-bold">{{ customer.label }}</div>
+                                <small class="pdv-muted">{{ t('counter.customer_selected') }}</small>
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-testid="pdv-customer-clear" @click="clearCustomer">
+                                {{ t('counter.customer_clear') }}
+                            </button>
+                        </div>
 
-                <template v-if="!customer">
-                    <p v-if="customerSearching" class="pdv-muted">{{ t('counter.customer_searching') }}</p>
-                    <div v-else-if="customerSearchError" class="pdv-alert pdv-alert--error" role="alert">
-                        {{ customerSearchError }}
-                        <button type="button" class="btn btn-sm btn-light ms-2" @click="runCustomerSearch">{{ t('common.retry') }}</button>
+                        <template v-else>
+                            <label class="form-label" for="pdv-customer-search">{{ t('counter.customer_optional') }}</label>
+                            <input
+                                id="pdv-customer-search"
+                                v-model="customerQuery"
+                                type="search"
+                                class="form-control"
+                                autocomplete="off"
+                                data-testid="pdv-customer-search"
+                                :placeholder="t('counter.customer_placeholder')"
+                            >
+
+                            <p v-if="customerSearching" class="pdv-muted mt-2 mb-0">{{ t('counter.customer_searching') }}</p>
+                            <div v-else-if="customerSearchError" class="pdv-alert pdv-alert--error mt-2" role="alert">
+                                {{ customerSearchError }}
+                                <button type="button" class="btn btn-sm btn-light ms-2" @click="runCustomerSearch">{{ t('common.retry') }}</button>
+                            </div>
+                            <p v-else-if="!customerHasSearched" class="pdv-muted mt-2 mb-0">{{ t('counter.customer_type_to_search') }}</p>
+                            <p v-else-if="customerResults.length === 0" class="pdv-muted mt-2 mb-0">{{ t('counter.customer_no_results') }}</p>
+
+                            <ul v-if="customerResults.length > 0 && !customerSearching" class="pdv-customer-results mt-2">
+                                <li v-for="row in customerResults" :key="`${row.type}|${row.id}`">
+                                    <button type="button" @click="selectCustomer(row)">{{ row.label }}</button>
+                                </li>
+                            </ul>
+                        </template>
+
+                        <p v-if="needsCustomer" class="text-warning mt-3 mb-0 small">
+                            <i class="fa-solid fa-triangle-exclamation me-1"></i>
+                            {{ t('counter.customer_hint') }}
+                        </p>
                     </div>
-                    <p v-else-if="!customerHasSearched" class="pdv-muted">{{ t('counter.customer_type_to_search') }}</p>
-                    <p v-else-if="customerResults.length === 0" class="pdv-muted">{{ t('counter.customer_no_results') }}</p>
-
-                    <table v-if="customerResults.length > 0 && !customerSearching" class="pdv-table">
-                        <tbody>
-                            <tr v-for="row in customerResults" :key="`${row.type}|${row.id}`">
-                                <td>{{ row.label }}</td>
-                                <td class="pdv-num">
-                                    <button type="button" class="btn btn-sm btn-outline-primary" @click="selectCustomer(row)">{{ t('counter.customer_select') }}</button>
-                                </td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </template>
-
-                <p v-if="needsCustomer" class="pdv-muted">{{ t('counter.customer_hint') }}</p>
-
-                <div class="pdv-field">
-                    <label for="pdv-search">{{ t('counter.search') }}</label>
-                    <input id="pdv-search" v-model="query" type="search" class="form-control" autocomplete="off" :placeholder="t('counter.search_placeholder')">
                 </div>
+            </aside>
 
-                <p v-if="searching" class="pdv-muted">{{ t('counter.searching') }}</p>
-                <div v-else-if="searchError" class="pdv-alert pdv-alert--error" role="alert">
-                    {{ searchError }}
-                    <button type="button" class="btn btn-sm btn-light ms-2" @click="runSearch">{{ t('common.retry') }}</button>
+            <!-- Coluna 2: catálogo exposto -->
+            <section class="pdv-col">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">{{ t('counter.catalog') }}</h5>
+                        <div class="input-group pdv-catalog-search">
+                            <span class="input-group-text"><i class="fa-solid fa-magnifying-glass"></i></span>
+                            <input
+                                id="pdv-search"
+                                v-model="query"
+                                type="search"
+                                class="form-control"
+                                autocomplete="off"
+                                data-testid="pdv-search"
+                                :placeholder="t('counter.search_placeholder')"
+                            >
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div class="pdv-tabs" role="tablist">
+                            <button
+                                v-for="filter in TYPE_FILTERS"
+                                :key="filter"
+                                type="button"
+                                class="btn btn-sm"
+                                :class="typeFilter === filter ? 'btn-primary' : 'btn-outline-primary'"
+                                :data-testid="`pdv-filter-${filter}`"
+                                @click="typeFilter = filter"
+                            >
+                                {{ t(`counter.filters.${filter}`) }}
+                            </button>
+                        </div>
+
+                        <p v-if="searching" class="pdv-muted">{{ t('counter.searching') }}</p>
+                        <div v-else-if="searchError" class="pdv-alert pdv-alert--error" role="alert">
+                            {{ searchError }}
+                            <button type="button" class="btn btn-sm btn-light ms-2" @click="loadCatalog">{{ t('common.retry') }}</button>
+                        </div>
+                        <p v-else-if="visibleCatalog.length === 0" class="pdv-muted">{{ t('counter.no_results') }}</p>
+
+                        <div v-else class="pdv-scroll">
+                            <template v-if="typeFilter === 'all'">
+                                <div v-if="subscriptions.length" class="mb-3">
+                                    <h6 class="pdv-section-title">
+                                        <span class="pdv-accent"></span>
+                                        {{ t('counter.sections.subscriptions') }}
+                                    </h6>
+                                    <div class="pdv-item-grid">
+                                        <button
+                                            v-for="item in subscriptions"
+                                            :key="lineKey(item)"
+                                            type="button"
+                                            class="pdv-item-card"
+                                            data-testid="pdv-catalog-item"
+                                            @click="addToCart(item)"
+                                        >
+                                            <span class="pdv-item-card__type text-primary">{{ typeLabel(item.type) }}</span>
+                                            <span class="pdv-item-card__name">{{ item.description }}</span>
+                                            <div class="pdv-item-card__footer">
+                                                <span class="pdv-item-card__price">{{ formatMoney(item.unit_amount) }}</span>
+                                                <span class="badge badge-primary">{{ t('counter.add') }}</span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div v-if="services.length" class="mb-3">
+                                    <h6 class="pdv-section-title">
+                                        <span class="pdv-accent pdv-accent--success"></span>
+                                        {{ t('counter.sections.services') }}
+                                    </h6>
+                                    <div class="pdv-item-grid">
+                                        <button
+                                            v-for="item in services"
+                                            :key="lineKey(item)"
+                                            type="button"
+                                            class="pdv-item-card"
+                                            data-testid="pdv-catalog-item"
+                                            @click="addToCart(item)"
+                                        >
+                                            <span class="pdv-item-card__type text-success">{{ typeLabel(item.type) }}</span>
+                                            <span class="pdv-item-card__name">{{ item.description }}</span>
+                                            <div class="pdv-item-card__footer">
+                                                <span class="pdv-item-card__price">{{ formatMoney(item.unit_amount) }}</span>
+                                                <span class="badge badge-success">{{ t('counter.add') }}</span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div v-if="products.length">
+                                    <h6 class="pdv-section-title">
+                                        <span class="pdv-accent pdv-accent--info"></span>
+                                        {{ t('counter.sections.products') }}
+                                    </h6>
+                                    <div class="pdv-item-grid">
+                                        <button
+                                            v-for="item in products"
+                                            :key="lineKey(item)"
+                                            type="button"
+                                            class="pdv-item-card"
+                                            data-testid="pdv-catalog-item"
+                                            @click="addToCart(item)"
+                                        >
+                                            <span class="pdv-item-card__type text-info">{{ typeLabel(item.type) }}</span>
+                                            <span class="pdv-item-card__name">{{ item.description }}</span>
+                                            <div class="pdv-item-card__footer">
+                                                <span class="pdv-item-card__price">{{ formatMoney(item.unit_amount) }}</span>
+                                                <span class="badge badge-info">{{ t('counter.add') }}</span>
+                                            </div>
+                                        </button>
+                                    </div>
+                                </div>
+                            </template>
+
+                            <div v-else class="pdv-item-grid">
+                                <button
+                                    v-for="item in visibleCatalog"
+                                    :key="lineKey(item)"
+                                    type="button"
+                                    class="pdv-item-card"
+                                    data-testid="pdv-catalog-item"
+                                    @click="addToCart(item)"
+                                >
+                                    <span class="pdv-item-card__type text-primary">{{ typeLabel(item.type) }}</span>
+                                    <span class="pdv-item-card__name">{{ item.description }}</span>
+                                    <div class="pdv-item-card__footer">
+                                        <span class="pdv-item-card__price">{{ formatMoney(item.unit_amount) }}</span>
+                                        <span class="badge badge-primary">{{ t('counter.add') }}</span>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <p v-else-if="!hasSearched" class="pdv-muted">{{ t('counter.type_to_search') }}</p>
-                <p v-else-if="results.length === 0" class="pdv-muted">{{ t('counter.no_results') }}</p>
-
-                <table v-if="results.length > 0 && !searching" class="pdv-table">
-                    <tbody>
-                        <tr v-for="item in results" :key="lineKey(item)">
-                            <td>{{ item.description }}</td>
-                            <td class="pdv-num">{{ formatMoney(item.unit_amount) }}</td>
-                            <td class="pdv-num">
-                                <button type="button" class="btn btn-sm btn-primary" @click="addToCart(item)">{{ t('counter.add') }}</button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
             </section>
 
-            <section class="pdv-panel">
-                <h5>{{ t('counter.cart') }}</h5>
-                <p v-if="cart.length === 0" class="pdv-muted">{{ t('counter.cart_empty') }}</p>
-                <table v-else class="pdv-table">
-                    <thead>
-                        <tr>
-                            <th></th>
-                            <th>{{ t('counter.qty') }}</th>
-                            <th class="pdv-num">{{ t('counter.total') }}</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr v-for="(line, index) in cart" :key="lineKey(line)">
-                            <td>{{ line.description }}<br><small class="pdv-muted">{{ formatMoney(line.unit_amount) }}</small></td>
-                            <td>
-                                <input type="number" min="1" step="1" class="form-control form-control-sm" :value="line.qty" :aria-label="t('counter.qty')" @input="setQty(line, $event.target.value)">
-                            </td>
-                            <td class="pdv-num">{{ formatMoney(line.qty * line.unit_amount) }}</td>
-                            <td class="pdv-num">
-                                <button type="button" class="btn btn-sm btn-outline-danger" @click="removeLine(index)">{{ t('counter.remove') }}</button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-                <p class="pdv-total">{{ t('counter.total') }}: {{ formatMoney(total) }}</p>
-            </section>
+            <!-- Coluna 3: carrinho + pagamento -->
+            <aside class="pdv-col">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">
+                            <i class="fa-solid fa-cart-shopping me-1 text-success"></i>
+                            {{ t('counter.cart') }}
+                            <span class="badge badge-light text-dark ms-1">{{ cart.length }}</span>
+                        </h5>
+                        <button v-if="cart.length" type="button" class="btn btn-sm btn-outline-danger" @click="clearCart">
+                            <i class="fa-regular fa-trash-can me-1"></i>{{ t('counter.clear_cart') }}
+                        </button>
+                    </div>
+                    <div class="card-body">
+                        <p v-if="cart.length === 0" class="pdv-muted">{{ t('counter.cart_empty') }}</p>
 
-            <section class="pdv-panel">
-                <h5>{{ t('counter.payments') }}</h5>
-                <p v-if="payments.length === 0" class="pdv-muted">{{ t('counter.payments_empty') }}</p>
-                <table v-else class="pdv-table">
-                    <tbody>
-                        <tr v-for="(line, index) in payments" :key="index">
-                            <td>
-                                {{ t(`counter.methods.${line.method}`) }}
-                                <small v-if="line.terminal_id" class="pdv-muted">· {{ terminalName(line.terminal_id) }}</small>
-                            </td>
-                            <td class="pdv-num">{{ formatMoney(line.amount) }}</td>
-                            <td class="pdv-num">
-                                <button type="button" class="btn btn-sm btn-outline-danger" @click="removePayment(index)">{{ t('counter.remove') }}</button>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
+                        <div v-else class="pdv-cart-list" data-testid="pdv-cart">
+                            <div v-for="(line, index) in cart" :key="lineKey(line)" class="pdv-cart-line">
+                                <div class="pdv-cart-line__top">
+                                    <div>
+                                        <div class="fw-semibold">{{ line.description }}</div>
+                                        <small class="pdv-muted">{{ formatMoney(line.unit_amount) }} · {{ typeLabel(line.type) }}</small>
+                                    </div>
+                                    <strong>{{ formatMoney(line.qty * line.unit_amount) }}</strong>
+                                </div>
+                                <div class="pdv-cart-line__qty">
+                                    <label class="visually-hidden" :for="`pdv-qty-${index}`">{{ t('counter.qty') }}</label>
+                                    <input
+                                        :id="`pdv-qty-${index}`"
+                                        type="number"
+                                        min="1"
+                                        step="1"
+                                        class="form-control form-control-sm"
+                                        :value="line.qty"
+                                        :aria-label="t('counter.qty')"
+                                        @input="setQty(line, $event.target.value)"
+                                    >
+                                    <button type="button" class="btn btn-sm btn-outline-danger" @click="removeLine(index)">{{ t('counter.remove') }}</button>
+                                </div>
+                            </div>
+                        </div>
 
-                <div class="pdv-row">
-                    <div class="pdv-field">
-                        <label for="pdv-method">{{ t('counter.method') }}</label>
-                        <select id="pdv-method" v-model="draft.method" class="form-select">
-                            <option v-for="method in ['cash', 'pix', 'card']" :key="method" :value="method">{{ t(`counter.methods.${method}`) }}</option>
-                        </select>
+                        <div class="pdv-summary">
+                            <div class="pdv-summary__row">
+                                <span>{{ t('counter.paid') }}</span>
+                                <span>{{ formatMoney(paid) }}</span>
+                            </div>
+                            <div class="pdv-summary__row">
+                                <span>{{ t('counter.remaining') }}</span>
+                                <span>{{ formatMoney(remaining) }}</span>
+                            </div>
+                            <div class="pdv-summary__total">
+                                <span class="text-uppercase small fw-bold">{{ t('counter.total') }}</span>
+                                <strong data-testid="pdv-total">{{ formatMoney(total) }}</strong>
+                            </div>
+                        </div>
+
+                        <div class="mb-2 small text-uppercase fw-semibold pdv-muted">{{ t('counter.payments') }}</div>
+                        <div class="pdv-pay-grid">
+                            <button
+                                v-for="method in ['card', 'pix', 'cash']"
+                                :key="method"
+                                type="button"
+                                class="pdv-pay-btn"
+                                :class="{ 'is-active': draft.method === method }"
+                                :data-testid="`pdv-pay-${method}`"
+                                @click="selectMethod(method)"
+                            >
+                                <i
+                                    class="fa-solid"
+                                    :class="{
+                                        'fa-credit-card': method === 'card',
+                                        'fa-qrcode': method === 'pix',
+                                        'fa-money-bill-wave': method === 'cash',
+                                    }"
+                                ></i>
+                                <span>{{ t(`counter.methods.${method}`) }}</span>
+                            </button>
+                        </div>
+
+                        <div v-if="draft.method === 'card'" class="mb-2">
+                            <label class="form-label" for="pdv-terminal">{{ t('counter.terminal') }}</label>
+                            <select id="pdv-terminal" v-model="draft.terminal_id" class="form-select" data-testid="pdv-terminal">
+                                <option value="">{{ t('counter.select_terminal') }}</option>
+                                <option v-for="terminal in activeTerminals" :key="terminal.id" :value="terminal.id">{{ terminal.name }}</option>
+                            </select>
+                        </div>
+
+                        <div class="row g-2 align-items-end mb-2">
+                            <div class="col">
+                                <label class="form-label" for="pdv-amount">{{ t('counter.amount') }}</label>
+                                <input
+                                    id="pdv-amount"
+                                    v-model="draft.amount"
+                                    type="text"
+                                    inputmode="decimal"
+                                    class="form-control"
+                                    placeholder="0,00"
+                                    data-testid="pdv-amount"
+                                    @focus="draft.amount === '' && prefillAmount()"
+                                >
+                            </div>
+                            <div class="col-auto">
+                                <button type="button" class="btn btn-secondary" data-testid="pdv-add-payment" @click="addPayment">
+                                    {{ t('counter.add_payment') }}
+                                </button>
+                            </div>
+                        </div>
+
+                        <button
+                            v-if="remaining > 0 && draft.method !== 'card'"
+                            type="button"
+                            class="btn btn-link btn-sm px-0 mb-2"
+                            @click="payRemainingQuick"
+                        >
+                            {{ t('counter.pay_remaining') }}
+                        </button>
+
+                        <div v-if="paymentError" class="pdv-alert pdv-alert--error" role="alert">{{ paymentError }}</div>
+
+                        <ul v-if="payments.length" class="list-group list-group-flush mb-3">
+                            <li v-for="(line, index) in payments" :key="index" class="list-group-item d-flex justify-content-between align-items-center px-0">
+                                <span>
+                                    {{ t(`counter.methods.${line.method}`) }}
+                                    <small v-if="line.terminal_id" class="pdv-muted">· {{ terminalName(line.terminal_id) }}</small>
+                                </span>
+                                <span>
+                                    {{ formatMoney(line.amount) }}
+                                    <button type="button" class="btn btn-sm btn-link text-danger" @click="removePayment(index)">{{ t('counter.remove') }}</button>
+                                </span>
+                            </li>
+                        </ul>
+
+                        <div v-if="submitError" class="pdv-alert pdv-alert--error" role="alert">{{ submitError }}</div>
+
+                        <button
+                            type="button"
+                            class="btn btn-success btn-lg pdv-finalize"
+                            data-testid="pdv-finalize"
+                            :disabled="!canFinalize"
+                            @click="finalize"
+                        >
+                            <i class="fa-solid fa-check-circle me-1"></i>
+                            {{ submitting ? t('counter.finalizing') : t('counter.finalize') }}
+                        </button>
                     </div>
-                    <div v-if="draft.method === 'card'" class="pdv-field">
-                        <label for="pdv-terminal">{{ t('counter.terminal') }}</label>
-                        <select id="pdv-terminal" v-model="draft.terminal_id" class="form-select">
-                            <option value="">{{ t('counter.select_terminal') }}</option>
-                            <option v-for="terminal in activeTerminals" :key="terminal.id" :value="terminal.id">{{ terminal.name }}</option>
-                        </select>
-                    </div>
-                    <div class="pdv-field">
-                        <label for="pdv-amount">{{ t('counter.amount') }}</label>
-                        <input id="pdv-amount" v-model="draft.amount" type="text" inputmode="decimal" class="form-control" placeholder="0,00" @focus="draft.amount === '' && prefillAmount()">
-                    </div>
-                    <button type="button" class="btn btn-secondary" @click="addPayment">{{ t('counter.add_payment') }}</button>
                 </div>
-                <div v-if="paymentError" class="pdv-alert pdv-alert--error" role="alert">{{ paymentError }}</div>
-
-                <p>{{ t('counter.paid') }}: {{ formatMoney(paid) }} · {{ t('counter.remaining') }}: {{ formatMoney(remaining) }}</p>
-
-                <div v-if="submitError" class="pdv-alert pdv-alert--error" role="alert">{{ submitError }}</div>
-                <button type="button" class="btn btn-success" :disabled="!canFinalize" @click="finalize">
-                    {{ submitting ? t('counter.finalizing') : t('counter.finalize') }}
-                </button>
-            </section>
+            </aside>
         </div>
     </div>
 </template>

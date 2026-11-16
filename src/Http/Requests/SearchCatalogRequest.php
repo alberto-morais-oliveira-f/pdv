@@ -34,6 +34,8 @@ class SearchCatalogRequest extends FormRequest
 
     public function searchLimit(): int
     {
-        return (int) ($this->validated('limit') ?? 20);
+        $default = $this->searchTerm() === '' ? 48 : 20;
+
+        return (int) ($this->validated('limit') ?? $default);
     }
 }
