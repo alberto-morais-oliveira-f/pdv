@@ -137,9 +137,12 @@ Payload (`SaleCompletedPayload`, integer cents): `sale_id`, `occurred_at`, `oper
 
 ## History and cancellation
 
-- `GET pdv/api/sales?date=YYYY-MM-DD&per_page=50` lists sales of a civil day (app timezone, default
-  today, any status, newest first, paginated). `GET pdv/api/sales?customer_type=&customer_id=&limit=5`
-  lists that customer's recent sales across days (used by the counter history). `GET pdv/api/sales/{id}` shows one sale.
+- `GET pdv/api/sales` lists sales newest first, paginated (`limit` or `per_page`). Filters combine:
+  `from`/`to` (inclusive civil days) or `date` (one day); `status`; `customer_type`+`customer_id`;
+  `operator_id`; `payment_method`; `terminal_id`; `item_type`; `q` (item description, case-insensitive);
+  `category` (`items.metadata.category`). With only `date` (or neither date nor customer) the window
+  is that civil day in the app timezone (default today). Customer history
+  (`customer_type`+`customer_id`+`limit`, no `date`/`from`/`to`) stays cross-day. `GET pdv/api/sales/{id}` shows one sale.
 - `DELETE pdv/api/sales/{id}` cancels the sale (the row is kept with `status=cancelled`) only when it is
   `completed`, `occurred_at` is today (app timezone) and no card payment has
   `expected_settlement_at` before the start of today. Otherwise HTTP 422 (`errors.sale`).

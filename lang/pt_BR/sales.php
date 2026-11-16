@@ -5,6 +5,17 @@ declare(strict_types=1);
 return [
     'attributes' => [
         'operator_id' => 'operador',
+        'date' => 'data',
+        'from' => 'data inicial',
+        'to' => 'data final',
+        'status' => 'status',
+        'payment_method' => 'forma de pagamento',
+        'terminal_id' => 'maquineta',
+        'item_type' => 'tipo do item',
+        'q' => 'busca',
+        'category' => 'categoria',
+        'limit' => 'limite',
+        'per_page' => 'itens por página',
         'customer_type' => 'tipo de cliente',
         'customer_id' => 'cliente',
         'items' => 'itens',

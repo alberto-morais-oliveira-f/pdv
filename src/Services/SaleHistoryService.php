@@ -4,45 +4,85 @@ declare(strict_types=1);
 
 namespace Am2tec\Pdv\Services;
 
+use Am2tec\Pdv\Enums\PaymentMethod;
+use Am2tec\Pdv\Enums\SaleItemType;
+use Am2tec\Pdv\Enums\SaleStatus;
 use Am2tec\Pdv\Models\Sale;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Carbon;
 
 class SaleHistoryService
 {
     /**
-     * Sales (any status) whose `occurred_at` falls on the given civil day in the app timezone, newest first.
+     * Newest-first listing. Date window, customer and item/payment filters combine.
      *
+     * @param  array{
+     *     from?: Carbon|null,
+     *     to?: Carbon|null,
+     *     status?: SaleStatus|null,
+     *     customer_type?: string|null,
+     *     customer_id?: string|null,
+     *     operator_id?: int|null,
+     *     payment_method?: PaymentMethod|null,
+     *     terminal_id?: int|null,
+     *     item_type?: SaleItemType|null,
+     *     q?: string|null,
+     *     category?: string|null,
+     *     per_page?: int
+     * }  $filters
      * @return LengthAwarePaginator<int, Sale>
      */
-    public function forDay(Carbon $day, int $perPage = 50): LengthAwarePaginator
+    public function list(array $filters): LengthAwarePaginator
     {
-        $start = $day->copy()->setTimezone((string) config('app.timezone'))->startOfDay();
+        $from = $filters['from'] ?? null;
+        $to = $filters['to'] ?? null;
+        $status = $filters['status'] ?? null;
+        $customerType = $filters['customer_type'] ?? null;
+        $customerId = $filters['customer_id'] ?? null;
+        $operatorId = $filters['operator_id'] ?? null;
+        $paymentMethod = $filters['payment_method'] ?? null;
+        $terminalId = $filters['terminal_id'] ?? null;
+        $itemType = $filters['item_type'] ?? null;
+        $search = $filters['q'] ?? null;
+        $category = $filters['category'] ?? null;
+        $perPage = $filters['per_page'] ?? 50;
 
         return Sale::query()
             ->with(['items', 'payments'])
-            ->where('occurred_at', '>=', $start)
-            ->where('occurred_at', '<', $start->copy()->addDay())
+            ->when($from, fn (Builder $query): Builder => $query->where('occurred_at', '>=', $from))
+            ->when($to, fn (Builder $query): Builder => $query->where('occurred_at', '<', $to))
+            ->when($status, fn (Builder $query): Builder => $query->where('status', $status))
+            ->when($customerType, fn (Builder $query): Builder => $query->where('customer_type', $customerType))
+            ->when($customerId, fn (Builder $query): Builder => $query->where('customer_id', $customerId))
+            ->when($operatorId, fn (Builder $query): Builder => $query->where('operator_id', $operatorId))
+            ->when(
+                $paymentMethod !== null || $terminalId !== null,
+                function (Builder $query) use ($paymentMethod, $terminalId): Builder {
+                    return $query->whereHas('payments', function (Builder $payments) use ($paymentMethod, $terminalId): void {
+                        $payments
+                            ->when($paymentMethod, fn (Builder $match): Builder => $match->where('method', $paymentMethod))
+                            ->when($terminalId, fn (Builder $match): Builder => $match->where('terminal_id', $terminalId));
+                    });
+                },
+            )
+            ->when(
+                $itemType !== null || $search !== null || $category !== null,
+                function (Builder $query) use ($itemType, $search, $category): Builder {
+                    return $query->whereHas('items', function (Builder $items) use ($itemType, $search, $category): void {
+                        $items->when($itemType, fn (Builder $match): Builder => $match->where('type', $itemType));
+
+                        if ($search !== null) {
+                            $items->whereLike('description', '%'.addcslashes($search, '%_\\').'%', false);
+                        }
+
+                        $items->when($category, fn (Builder $match): Builder => $match->where('metadata->category', $category));
+                    });
+                },
+            )
             ->orderByDesc('occurred_at')
             ->orderByDesc('id')
             ->paginate($perPage)
-            ->withQueryString();
-    }
-
-    /**
-     * Recent sales for a customer across days, newest first.
-     *
-     * @return LengthAwarePaginator<int, Sale>
-     */
-    public function forCustomer(string $customerType, string $customerId, int $limit = 5): LengthAwarePaginator
-    {
-        return Sale::query()
-            ->with(['items', 'payments'])
-            ->where('customer_type', $customerType)
-            ->where('customer_id', $customerId)
-            ->orderByDesc('occurred_at')
-            ->orderByDesc('id')
-            ->paginate($limit)
             ->withQueryString();
     }
 }

@@ -4,6 +4,20 @@ declare(strict_types=1);
 
 return [
     'attributes' => [
+        'date' => 'date',
+        'from' => 'start date',
+        'to' => 'end date',
+        'status' => 'status',
+        'operator_id' => 'operator',
+        'payment_method' => 'payment method',
+        'terminal_id' => 'terminal',
+        'item_type' => 'item type',
+        'q' => 'search',
+        'category' => 'category',
+        'limit' => 'limit',
+        'per_page' => 'page size',
+        'customer_type' => 'customer type',
+        'customer_id' => 'customer',
         'items.*.type' => 'item type',
         'items.*.qty' => 'quantity',
         'items.*.unit_amount' => 'unit amount',
