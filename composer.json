@@ -2,6 +2,17 @@
     "name": "am2tec/pdv",
     "description": "Point of sale (PDV) for Laravel multi-tenant hosts.",
     "type": "library",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "Alberto Morais",
+            "email": "albertomorais80@gmail.com"
+        }
+    ],
+    "homepage": "https://github.com/alberto-morais-oliveira-f/pdv",
+    "support": {
+        "source": "https://github.com/alberto-morais-oliveira-f/pdv"
+    },
     "require": {
         "php": "^8.3",
         "illuminate/support": "^11|^12|^13",
